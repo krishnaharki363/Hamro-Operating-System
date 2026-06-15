@@ -97,3 +97,13 @@ int get_heap_block_count() {
     }
     return count;
 }
+
+void *memcpy(void *dest, const void *src, u32 n) {
+    char *d = dest;
+    const char *s = src;
+    for (u32 i = 0; i < n; i++) {
+        d[i] = s[i];
+    }
+    return dest;
+}
+

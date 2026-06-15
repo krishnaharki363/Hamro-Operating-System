@@ -22,4 +22,6 @@ u32 get_heap_used();
 u32 get_heap_free();
 int get_heap_block_count();
 
+void *memcpy(void *dest, const void *src, u32 n);
+
 #endif
