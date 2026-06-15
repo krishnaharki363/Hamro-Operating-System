@@ -1,0 +1,22 @@
+{
+    "configurations": [
+        {
+            "name": "OS-Dev-i386",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/include"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/clang",
+            "cStandard": "c11",
+            "cppStandard": "c++14",
+            "intelliSenseMode": "macos-clang-x64",
+            "compilerArgs": [
+                "-target",
+                "i386-elf",
+                "-ffreestanding"
+            ]
+        }
+    ],
+    "version": 4
+}
