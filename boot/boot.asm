@@ -8,7 +8,7 @@ KERNEL_OFFSET equ 0x1000 ; The memory offset to which we will load our kernel
     mov ds, ax
     mov es, ax
     mov ss, ax
-    mov sp, 0x7c00      ; Set up stack pointer safely below bootloader
+    mov sp, 0xF000      ; Set up stack pointer safely at 0xF000 to prevent stack collision (buffer ends at 0xC200)
     sti                 ; Restore interrupts
 
     mov [BOOT_DRIVE], dl ; Save the boot drive number! BIOS stores it in DL.

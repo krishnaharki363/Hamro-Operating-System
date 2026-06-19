@@ -1,55 +1,95 @@
-; load DH sectors to ES:BX from drive DL
+; Load DH sectors to ES:BX from drive DL
 load_kernel:
     mov bx, MSG_LOAD_KERNEL
     call print_string
     call print_nl
 
-    ; Save drive number
-    mov dl, [BOOT_DRIVE]
-
-    ; We want to load 50 sectors (more than enough for the kernel)
-    mov di, 50              ; Loop counter (sectors to read)
     mov bx, KERNEL_OFFSET   ; Load destination in memory (0x1000)
 
-    ; Start position on floppy
-    mov ch, 0               ; Cylinder 0
-    mov dh, 0               ; Head 0
-    mov cl, 2               ; Sector 2 (Sector 1 is boot sector)
-
-.read_sector_loop:
-    push dx
-    push cx
-
-    mov ah, 0x02            ; BIOS read sector
-    mov al, 1               ; Read exactly 1 sector
+    ; 1. Read Track 0 (Cylinder 0, Head 0): sectors 2..18 (17 sectors)
+    mov dl, [BOOT_DRIVE]
+    mov ah, 0x02            ; BIOS read sectors
+    mov al, 17              ; read 17 sectors
+    mov ch, 0               ; cylinder 0
+    mov dh, 0               ; head 0
+    mov cl, 2               ; start sector 2
     int 0x13
     jc disk_error
 
-    pop cx
-    pop dx
+    ; Print progress '1'
+    mov ah, 0x0e
+    mov al, '1'
+    int 0x10
 
-    ; Move memory pointer forward by 512 bytes (1 sector size)
-    add bx, 512
+    add bx, 17 * 512        ; advance memory buffer pointer by 17 sectors
 
-    ; Increment sector number
-    inc cl
-    cmp cl, 19              ; 18 sectors per track on standard 1.44MB floppy
-    jl .continue
+    ; 2. Read Track 1 (Cylinder 0, Head 1): sectors 1..18 (18 sectors)
+    mov dl, [BOOT_DRIVE]
+    mov ah, 0x02
+    mov al, 18              ; read 18 sectors
+    mov ch, 0               ; cylinder 0
+    mov dh, 1               ; head 1
+    mov cl, 1               ; start sector 1
+    int 0x13
+    jc disk_error
 
-    ; If sector > 18, reset to sector 1 and go to next head
-    mov cl, 1
-    inc dh                  ; Next head
-    cmp dh, 2               ; 2 heads per cylinder (0 and 1)
-    jl .continue
+    ; Print progress '2'
+    mov ah, 0x0e
+    mov al, '2'
+    int 0x10
 
-    ; If head >= 2, reset head to 0 and go to next cylinder
-    mov dh, 0
-    inc ch                  ; Next cylinder
+    add bx, 18 * 512        ; advance memory buffer pointer by 18 sectors
 
-.continue:
-    dec di                  ; Decrement loop counter
-    jnz .read_sector_loop
+    ; 3. Read Track 2 (Cylinder 1, Head 0): sectors 1..18 (18 sectors)
+    mov dl, [BOOT_DRIVE]
+    mov ah, 0x02
+    mov al, 18              ; read 18 sectors
+    mov ch, 1               ; cylinder 1
+    mov dh, 0               ; head 0
+    mov cl, 1               ; start sector 1
+    int 0x13
+    jc disk_error
 
+    ; Print progress '3'
+    mov ah, 0x0e
+    mov al, '3'
+    int 0x10
+
+    add bx, 18 * 512
+
+    ; 4. Read Track 3 (Cylinder 1, Head 1): sectors 1..18 (18 sectors)
+    mov dl, [BOOT_DRIVE]
+    mov ah, 0x02
+    mov al, 18              ; read 18 sectors
+    mov ch, 1               ; cylinder 1
+    mov dh, 1               ; head 1
+    mov cl, 1               ; start sector 1
+    int 0x13
+    jc disk_error
+
+    ; Print progress '4'
+    mov ah, 0x0e
+    mov al, '4'
+    int 0x10
+
+    add bx, 18 * 512
+
+    ; 5. Read Track 4 (Cylinder 2, Head 0): sectors 1..18 (18 sectors)
+    mov dl, [BOOT_DRIVE]
+    mov ah, 0x02
+    mov al, 18              ; read 18 sectors
+    mov ch, 2               ; cylinder 2
+    mov dh, 0               ; head 0
+    mov cl, 1               ; start sector 1
+    int 0x13
+    jc disk_error
+
+    ; Print progress '5'
+    mov ah, 0x0e
+    mov al, '5'
+    int 0x10
+
+    call print_nl
     ret
 
 disk_error:

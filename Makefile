@@ -15,7 +15,7 @@ all: os-image
 
 # Run qemu
 run: all
-	qemu-system-i386 -fda os-image
+	qemu-system-i386 -fda os-image -display cocoa,zoom-to-fit=on
 
 # This is the actual disk image that the computer loads
 # It is the combination of our compiled bootsector and kernel
