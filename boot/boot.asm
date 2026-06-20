@@ -1,6 +1,6 @@
 [org 0x7c00]    ; BIOS loads the bootloader at memory address 0x7c00
 
-KERNEL_OFFSET equ 0x1000 ; The memory offset to which we will load our kernel
+KERNEL_OFFSET equ 0x8000 ; Load kernel at 0x8000 (safely above bootloader at 0x7C00)
 
     ; Explicitly initialize segment registers to 0
     cli                 ; Clear interrupts during stack setup
@@ -8,7 +8,7 @@ KERNEL_OFFSET equ 0x1000 ; The memory offset to which we will load our kernel
     mov ds, ax
     mov es, ax
     mov ss, ax
-    mov sp, 0xF000      ; Set up stack pointer safely at 0xF000 to prevent stack collision (buffer ends at 0xC200)
+    mov sp, 0x7C00      ; Set stack pointer below bootloader to prevent collision with kernel at 0x8000+
     sti                 ; Restore interrupts
 
     mov [BOOT_DRIVE], dl ; Save the boot drive number! BIOS stores it in DL.

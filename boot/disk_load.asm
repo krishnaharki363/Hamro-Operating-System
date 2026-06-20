@@ -1,98 +1,105 @@
-; Load DH sectors to ES:BX from drive DL
+; disk_load.asm — loads the kernel from floppy into memory at physical 0x8000
+;
+; Floppy DMA cannot cross a 64KB physical boundary (0x10000, 0x20000, etc) during a single read.
+; We load 71 sectors (36 KB). 0x8000 + 36KB = 0x11000, which crosses the 0x10000 boundary.
+; To fix this, we split the read precisely at the 0x10000 boundary.
+;
+; Memory layout:
+; Read 1: Cyl 0, Hd 0, Sec 2-18 (17 sec)  ES=0x0800 BX=0x0000 (0x08000 -> 0x0A200)
+; Read 2: Cyl 0, Hd 1, Sec 1-18 (18 sec)  ES=0x0A20 BX=0x0000 (0x0A200 -> 0x0C600)
+; Read 3: Cyl 1, Hd 0, Sec 1-18 (18 sec)  ES=0x0C60 BX=0x0000 (0x0C600 -> 0x0EA00)
+; Read 4: Cyl 1, Hd 1, Sec 1-11 (11 sec)  ES=0x0EA0 BX=0x0000 (0x0EA00 -> 0x10000) <- boundary
+; Read 5: Cyl 1, Hd 1, Sec 12-18( 7 sec)  ES=0x1000 BX=0x0000 (0x10000 -> 0x10E00)
+;
+; Total = 17+18+18+11+7 = 71 sectors.
+
 load_kernel:
     mov bx, MSG_LOAD_KERNEL
     call print_string
     call print_nl
 
-    mov bx, KERNEL_OFFSET   ; Load destination in memory (0x1000)
-
-    ; 1. Read Track 0 (Cylinder 0, Head 0): sectors 2..18 (17 sectors)
+    ; ---- Read 1: 17 sectors ----
+    mov ax, 0x0800
+    mov es, ax
+    mov bx, 0x0000
     mov dl, [BOOT_DRIVE]
-    mov ah, 0x02            ; BIOS read sectors
-    mov al, 17              ; read 17 sectors
-    mov ch, 0               ; cylinder 0
-    mov dh, 0               ; head 0
-    mov cl, 2               ; start sector 2
+    mov ah, 0x02
+    mov al, 17
+    mov ch, 0
+    mov dh, 0
+    mov cl, 2
     int 0x13
     jc disk_error
-
-    ; Print progress '1'
     mov ah, 0x0e
     mov al, '1'
     int 0x10
 
-    add bx, 17 * 512        ; advance memory buffer pointer by 17 sectors
-
-    ; 2. Read Track 1 (Cylinder 0, Head 1): sectors 1..18 (18 sectors)
-    mov dl, [BOOT_DRIVE]
+    ; ---- Read 2: 18 sectors ----
+    mov ax, 0x0A20
+    mov es, ax
     mov ah, 0x02
-    mov al, 18              ; read 18 sectors
-    mov ch, 0               ; cylinder 0
-    mov dh, 1               ; head 1
-    mov cl, 1               ; start sector 1
+    mov al, 18
+    mov ch, 0
+    mov dh, 1
+    mov cl, 1
     int 0x13
     jc disk_error
-
-    ; Print progress '2'
     mov ah, 0x0e
     mov al, '2'
     int 0x10
 
-    add bx, 18 * 512        ; advance memory buffer pointer by 18 sectors
-
-    ; 3. Read Track 2 (Cylinder 1, Head 0): sectors 1..18 (18 sectors)
-    mov dl, [BOOT_DRIVE]
+    ; ---- Read 3: 18 sectors ----
+    mov ax, 0x0C60
+    mov es, ax
     mov ah, 0x02
-    mov al, 18              ; read 18 sectors
-    mov ch, 1               ; cylinder 1
-    mov dh, 0               ; head 0
-    mov cl, 1               ; start sector 1
+    mov al, 18
+    mov ch, 1
+    mov dh, 0
+    mov cl, 1
     int 0x13
     jc disk_error
-
-    ; Print progress '3'
     mov ah, 0x0e
     mov al, '3'
     int 0x10
 
-    add bx, 18 * 512
-
-    ; 4. Read Track 3 (Cylinder 1, Head 1): sectors 1..18 (18 sectors)
-    mov dl, [BOOT_DRIVE]
+    ; ---- Read 4: 11 sectors (stops at 0x10000 boundary) ----
+    mov ax, 0x0EA0
+    mov es, ax
     mov ah, 0x02
-    mov al, 18              ; read 18 sectors
-    mov ch, 1               ; cylinder 1
-    mov dh, 1               ; head 1
-    mov cl, 1               ; start sector 1
+    mov al, 11
+    mov ch, 1
+    mov dh, 1
+    mov cl, 1
     int 0x13
     jc disk_error
-
-    ; Print progress '4'
     mov ah, 0x0e
     mov al, '4'
     int 0x10
 
-    add bx, 18 * 512
-
-    ; 5. Read Track 4 (Cylinder 2, Head 0): sectors 1..18 (18 sectors)
-    mov dl, [BOOT_DRIVE]
+    ; ---- Read 5: 7 sectors (starts at 0x10000) ----
+    mov ax, 0x1000
+    mov es, ax
     mov ah, 0x02
-    mov al, 18              ; read 18 sectors
-    mov ch, 2               ; cylinder 2
-    mov dh, 0               ; head 0
-    mov cl, 1               ; start sector 1
+    mov al, 7
+    mov ch, 1
+    mov dh, 1
+    mov cl, 12   ; sector 12
     int 0x13
     jc disk_error
-
-    ; Print progress '5'
     mov ah, 0x0e
     mov al, '5'
     int 0x10
+
+    ; Restore ES=0 for the rest of the bootloader
+    mov ax, 0
+    mov es, ax
 
     call print_nl
     ret
 
 disk_error:
+    mov ax, 0
+    mov es, ax
     mov bx, DISK_ERR_MSG
     call print_string
     jmp $

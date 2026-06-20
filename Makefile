@@ -6,7 +6,7 @@ HEADERS = $(wildcard include/*.h)
 OBJ = ${C_SOURCES:.c=.o}
 
 CC = clang
-LD = /opt/homebrew/bin/x86_64-elf-ld
+LD = ld
 CFLAGS = -g -target i386-elf -ffreestanding -Wall -Wextra -fno-exceptions -Iinclude
 LDFLAGS = -m elf_i386 -T linker.ld -nostdlib
 
@@ -15,7 +15,7 @@ all: os-image
 
 # Run qemu
 run: all
-	qemu-system-i386 -fda os-image -display cocoa,zoom-to-fit=on
+	qemu-system-i386 -fda os-image -display sdl
 
 # This is the actual disk image that the computer loads
 # It is the combination of our compiled bootsector and kernel
@@ -29,8 +29,8 @@ os-image: boot/boot.bin kernel.bin
 #  - boot/kernel_entry.o: entry point
 #  - kernel/interrupt.o: assembly ISR wrappers
 #  - ${OBJ}: compiled C objects
-kernel.bin: boot/kernel_entry.o kernel/interrupt.o ${OBJ}
-	${LD} ${LDFLAGS} -o $@ $^ --oformat binary
+kernel.bin: boot/kernel_entry.o kernel/interrupt.o ${OBJ} | linker.ld
+	${LD} ${LDFLAGS} --oformat binary -o $@ boot/kernel_entry.o kernel/interrupt.o ${OBJ}
 
 # Generic rules for wildcards
 # To make an object, always compile from its .c

@@ -537,6 +537,203 @@ static void run_hack() {
     clear_screen();
 }
 
+/* ===================================================================
+ * SNAKE GAME  —  WASD to move, Q to quit
+ * Play area: x 1..78, y 2..22  |  100Hz timer drives speed
+ * =================================================================== */
+#define SNAKE_MAX  100
+#define SN_UP    0
+#define SN_DOWN  1
+#define SN_LEFT  2
+#define SN_RIGHT 3
+
+static void sn_vid(int col, int row, char c, u8 attr) {
+    char *vid = (char *)0xB8000;
+    int off = 2 * (row * 80 + col);
+    vid[off] = c; vid[off + 1] = attr;
+}
+
+static void sn_numprint(int col, int row, int n, u8 attr) {
+    char buf[16];
+    int_to_ascii(n, buf);
+    for (int i = 0; buf[i]; i++) sn_vid(col + i, row, buf[i], attr);
+    sn_vid(col + strlen(buf), row, ' ', attr);  /* clear leftover digit */
+}
+
+static void run_snake() {
+    clear_screen();
+    seed_rand(get_ticks());
+
+    /* Header bar */
+    char *hdr = "  HAMRO SNAKE  |  WASD: Move  |  Q: Quit  |  Score: ";
+    for (int i = 0; hdr[i] && i < 80; i++) sn_vid(i, 0, hdr[i], 0x3F);
+    sn_numprint(53, 0, 0, 0x3F);
+
+    /* CP437 double-line border */
+    for (int x = 1; x < 79; x++) { sn_vid(x,  1, (char)205, 0x0B); sn_vid(x, 23, (char)205, 0x0B); }
+    for (int y = 2; y <= 22;  y++) { sn_vid(0, y, (char)186, 0x0B); sn_vid(79, y, (char)186, 0x0B); }
+    sn_vid( 0,  1, (char)201, 0x0B); sn_vid(79,  1, (char)187, 0x0B);
+    sn_vid( 0, 23, (char)200, 0x0B); sn_vid(79, 23, (char)188, 0x0B);
+
+    /* Snake state */
+    int sx[SNAKE_MAX], sy[SNAKE_MAX];
+    int slen = 5, dir = SN_RIGHT, ndir = SN_RIGHT;
+    int score = 0, dead = 0;
+
+    for (int i = 0; i < slen; i++) { sx[i] = 39 - i; sy[i] = 12; }
+    sn_vid(sx[0], sy[0], '@', 0x0A);
+    for (int i = 1; i < slen; i++) sn_vid(sx[i], sy[i], (char)219, 0x02);
+
+    /* Initial food */
+    int fx = 1 + rand() % 78;
+    int fy = 2 + rand() % 21;
+    sn_vid(fx, fy, (char)4, 0x0C);   /* CP437 diamond, red */
+
+    u32 interval = 8;                 /* ticks between moves (100 Hz) */
+    u32 last_t   = get_ticks();
+
+    while (!dead) {
+        /* Drain keyboard ring buffer */
+        char c;
+        while ((c = get_last_char()) != 0) {
+            clear_last_char();
+            if ((c=='w'||c=='W') && dir!=SN_DOWN)  ndir = SN_UP;
+            if ((c=='s'||c=='S') && dir!=SN_UP)    ndir = SN_DOWN;
+            if ((c=='a'||c=='A') && dir!=SN_RIGHT)  ndir = SN_LEFT;
+            if ((c=='d'||c=='D') && dir!=SN_LEFT)   ndir = SN_RIGHT;
+            if  (c=='q'||c=='Q') { dead = 2; }
+        }
+        if (dead) break;
+
+        u32 now = get_ticks();
+        if (now - last_t < interval) { __asm__ __volatile__("pause"); continue; }
+        last_t = now;
+        dir = ndir;
+
+        /* Compute new head position */
+        int nx = sx[0], ny = sy[0];
+        if (dir == SN_RIGHT) nx++;
+        else if (dir == SN_LEFT) nx--;
+        else if (dir == SN_DOWN) ny++;
+        else ny--;
+
+        /* Wall collision */
+        if (nx < 1 || nx > 78 || ny < 2 || ny > 22) { dead = 1; break; }
+
+        /* Self collision (skip head at i=0) */
+        for (int i = 1; i < slen && !dead; i++)
+            if (sx[i] == nx && sy[i] == ny) dead = 1;
+        if (dead) break;
+
+        int ate = (nx == fx && ny == fy);
+
+        /* Erase tail before shift (skip if growing) */
+        if (!ate) sn_vid(sx[slen-1], sy[slen-1], ' ', 0x00);
+        if (ate && slen < SNAKE_MAX) slen++;
+
+        /* Shift body */
+        for (int i = slen-1; i > 0; i--) { sx[i]=sx[i-1]; sy[i]=sy[i-1]; }
+        sx[0]=nx; sy[0]=ny;
+
+        /* Redraw head and second segment */
+        sn_vid(sx[0], sy[0], '@', 0x0A);
+        if (slen > 1) sn_vid(sx[1], sy[1], (char)219, 0x02);
+
+        if (ate) {
+            score++;
+            sn_numprint(53, 0, score, 0x3F);
+            if (score % 5 == 0 && interval > 2) interval--;  /* speed up */
+            /* Spawn food not on snake body */
+            int tries = 0;
+            do {
+                fx = 1 + rand() % 78;
+                fy = 2 + rand() % 21;
+                int ok = 1;
+                for (int i = 0; i < slen; i++)
+                    if (sx[i]==fx && sy[i]==fy) { ok=0; break; }
+                if (ok || ++tries > 200) break;
+            } while (1);
+            sn_vid(fx, fy, (char)4, 0x0C);
+        }
+    }
+
+    /* Game Over overlay */
+    if (dead == 1) {
+        char *go = "  GAME OVER!  Press any key to continue...  ";
+        int c0 = (80 - 44) / 2;
+        for (int i = 0; go[i]; i++) sn_vid(c0+i, 12, go[i], 0x4F);  /* white on red */
+    }
+    while (get_last_char() == 0) __asm__ __volatile__("pause");
+    clear_last_char();
+    clear_screen();
+}
+
+/* ===================================================================
+ * CALCULATOR  —  recursive-descent parser
+ * Supports: integers, +  -  *  /  ( )  and unary minus
+ * Operator precedence: * / before + -
+ * =================================================================== */
+static const char *cl_str;   /* expression being parsed */
+static int         cl_p;     /* current position        */
+
+static void cl_skip(void) { while (cl_str[cl_p] == ' ') cl_p++; }
+static int  cl_eval(void);   /* forward decl for parenthesis recursion */
+
+static int cl_prim(void) {
+    cl_skip();
+    if (cl_str[cl_p] == '(') {
+        cl_p++;
+        int v = cl_eval(); cl_skip();
+        if (cl_str[cl_p] == ')') cl_p++;
+        return v;
+    }
+    int sign = 1;
+    if      (cl_str[cl_p] == '-') { sign = -1; cl_p++; }
+    else if (cl_str[cl_p] == '+')              cl_p++;
+    cl_skip();
+    int v = 0;
+    while (cl_str[cl_p] >= '0' && cl_str[cl_p] <= '9')
+        v = v * 10 + (cl_str[cl_p++] - '0');
+    return v * sign;
+}
+
+static int cl_term(void) {
+    int v = cl_prim(); cl_skip();
+    while (cl_str[cl_p] == '*' || cl_str[cl_p] == '/') {
+        char op = cl_str[cl_p++];
+        int  r  = cl_prim();
+        v = (op == '*') ? v * r : (r ? v / r : 0);
+        cl_skip();
+    }
+    return v;
+}
+
+static int cl_eval(void) {
+    int v = cl_term(); cl_skip();
+    while (cl_str[cl_p] == '+' || cl_str[cl_p] == '-') {
+        char op = cl_str[cl_p++];
+        v = (op == '+') ? v + cl_term() : v - cl_term();
+        cl_skip();
+    }
+    return v;
+}
+
+static void run_calc(const char *expr) {
+    if (!expr || strlen(expr) == 0) {
+        kprint_color("Usage: calc <expression>\n", 0x0C);
+        kprint_color("  e.g.  calc 3+5*2       calc (10-3)*4      calc 100/4+7\n", 0x07);
+        return;
+    }
+    cl_str = expr; cl_p = 0;
+    int result = cl_eval();
+    char buf[32];
+    kprint_color(expr, 0x0F);
+    kprint_color("  =  ", 0x0E);
+    int_to_ascii(result, buf);
+    kprint_color(buf, 0x0A);
+    kprint("\n");
+}
+
 static void execute_command(char *input) {
     char cmd[128];
     char arg[128];
@@ -564,6 +761,8 @@ static void execute_command(char *input) {
         kprint_color("  neofetch          ", 0x0B); kprint("- Print logo and OS details\n");
         kprint_color("  matrix            ", 0x0B); kprint("- Launch hacker matrix rain\n");
         kprint_color("  hack              ", 0x0B); kprint("- Launch system bypass simulation\n");
+        kprint_color("  snake            ", 0x0B); kprint("- Play the classic snake game (WASD)\n");
+        kprint_color("  calc <expr>      ", 0x0B); kprint("- Math: calc 3+5*2  or  calc (10-3)*4\n");
     } else if (strcmp(cmd, "clear") == 0) {
         clear_screen();
     } else if (strcmp(cmd, "uptime") == 0) {
@@ -1071,6 +1270,10 @@ static void execute_command(char *input) {
         run_matrix();
     } else if (strcmp(cmd, "hack") == 0) {
         run_hack();
+    } else if (strcmp(cmd, "snake") == 0) {
+        run_snake();
+    } else if (strcmp(cmd, "calc") == 0) {
+        run_calc(arg);
     } else if (strlen(cmd) > 0) {
         kprint_color("Unknown command: '", 0x0C);
         kprint_color(cmd, 0x0C);
@@ -1119,6 +1322,12 @@ void run_shell() {
                 }
             }
         }
-        __asm__ __volatile__("hlt");
+        /* Use 'pause' (rep nop) instead of 'hlt'.
+         * 'hlt' suspends the CPU until the next interrupt, which means it only
+         * wakes on TIMER or KEYBOARD irqs. If the timer IRQ fires first and the
+         * keyboard callback already set last_char, we might clear it before
+         * reading. 'pause' keeps the CPU spinning with interrupts enabled so we
+         * never miss a keypress set during an IRQ. */
+        __asm__ __volatile__("pause");
     }
 }

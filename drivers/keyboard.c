@@ -2,7 +2,19 @@
 #include "ports.h"
 #include "vga.h"
 
-static char last_char = 0;
+/* ---------------------------------------------------------------------------
+ * Ring buffer for keypresses.
+ * Using a 16-slot circular buffer ensures that rapid keypresses are never
+ * silently dropped because the shell loop was momentarily occupied by a timer
+ * IRQ or any other work.  The old single-variable design meant that if a
+ * second key arrived before the shell called clear_last_char(), the first
+ * character was overwritten and lost forever.
+ * -------------------------------------------------------------------------*/
+#define KB_BUF_SIZE 16
+static volatile char kb_buf[KB_BUF_SIZE];
+static volatile int  kb_head = 0;   /* next slot to write (producer) */
+static volatile int  kb_tail = 0;   /* next slot to read  (consumer) */
+
 static int shift_pressed = 0;
 
 const char scancode_to_ascii[] = {
@@ -43,27 +55,26 @@ static void keyboard_callback(registers_t *regs) {
     (void)regs;
     /* The PIC leaves us the scancode in port 0x60 */
     u8 scancode = port_byte_in(0x60);
-    
-    // Check if shift is pressed or released
-    if (scancode == 0x2A || scancode == 0x36) {
-        shift_pressed = 1;
-        return;
-    }
-    if (scancode == 0xAA || scancode == 0xB6) {
-        shift_pressed = 0;
-        return;
-    }
-    
-    if (scancode & 0x80) {
-        // Break code (key release) - ignore other keys
-        return;
-    }
-    
-    // Map make code to ASCII
+
+    /* Shift press / release */
+    if (scancode == 0x2A || scancode == 0x36) { shift_pressed = 1; return; }
+    if (scancode == 0xAA || scancode == 0xB6) { shift_pressed = 0; return; }
+
+    /* Ignore all other break codes (key-release events) */
+    if (scancode & 0x80) return;
+
+    /* Map make code to ASCII */
     if (scancode < sizeof(scancode_to_ascii)) {
-        char ascii = shift_pressed ? scancode_to_ascii_shift[scancode] : scancode_to_ascii[scancode];
+        char ascii = shift_pressed
+                   ? scancode_to_ascii_shift[scancode]
+                   : scancode_to_ascii[scancode];
         if (ascii != 0) {
-            last_char = ascii;
+            /* Enqueue into ring buffer (drop silently if full) */
+            int next_head = (kb_head + 1) % KB_BUF_SIZE;
+            if (next_head != kb_tail) {   /* buffer not full */
+                kb_buf[kb_head] = ascii;
+                kb_head = next_head;
+            }
         }
     }
 }
@@ -72,10 +83,16 @@ void init_keyboard() {
     register_interrupt_handler(IRQ1, keyboard_callback);
 }
 
+/* Returns the oldest character in the buffer, or 0 if empty.
+ * Does NOT remove it from the buffer — call clear_last_char() to consume. */
 char get_last_char() {
-    return last_char;
+    if (kb_tail == kb_head) return 0;   /* buffer empty */
+    return kb_buf[kb_tail];
 }
 
+/* Consume (remove) the oldest character from the buffer. */
 void clear_last_char() {
-    last_char = 0;
+    if (kb_tail != kb_head) {
+        kb_tail = (kb_tail + 1) % KB_BUF_SIZE;
+    }
 }
