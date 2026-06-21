@@ -79,11 +79,11 @@ typedef struct {
     u32 eip, cs, eflags, useresp, ss; /* Pushed by CPU */
 } registers_t;
 
-typedef void (*isr_t)(registers_t*);
+typedef u32 (*isr_t)(registers_t*);
 
 void isr_install();
-void isr_handler(registers_t *r);
+u32 isr_handler(registers_t *r);
 void register_interrupt_handler(u8 n, isr_t handler);
-void irq_handler(registers_t *r);
+u32 irq_handler(registers_t *r);
 
 #endif

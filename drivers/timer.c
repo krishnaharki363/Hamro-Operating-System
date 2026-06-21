@@ -1,12 +1,14 @@
 #include "timer.h"
 #include "ports.h"
 #include "vga.h"
+#include "process.h"
 
 static u32 tick_count = 0;
 
-static void timer_callback(registers_t *regs) {
+static u32 timer_callback(registers_t *regs) {
     (void)regs;
     tick_count++;
+    return schedule((u32)regs);
 }
 
 void init_timer(u32 freq) {

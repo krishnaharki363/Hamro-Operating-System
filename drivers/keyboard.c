@@ -51,17 +51,17 @@ const char scancode_to_ascii_shift[] = {
     0,	/* Caps lock */
 };
 
-static void keyboard_callback(registers_t *regs) {
+static u32 keyboard_callback(registers_t *regs) {
     (void)regs;
     /* The PIC leaves us the scancode in port 0x60 */
     u8 scancode = port_byte_in(0x60);
 
     /* Shift press / release */
-    if (scancode == 0x2A || scancode == 0x36) { shift_pressed = 1; return; }
-    if (scancode == 0xAA || scancode == 0xB6) { shift_pressed = 0; return; }
+    if (scancode == 0x2A || scancode == 0x36) { shift_pressed = 1; return (u32)regs; }
+    if (scancode == 0xAA || scancode == 0xB6) { shift_pressed = 0; return (u32)regs; }
 
     /* Ignore all other break codes (key-release events) */
-    if (scancode & 0x80) return;
+    if (scancode & 0x80) return (u32)regs;
 
     /* Map make code to ASCII */
     if (scancode < sizeof(scancode_to_ascii)) {
@@ -77,6 +77,7 @@ static void keyboard_callback(registers_t *regs) {
             }
         }
     }
+    return (u32)regs;
 }
 
 void init_keyboard() {

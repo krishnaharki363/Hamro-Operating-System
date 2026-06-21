@@ -1,6 +1,6 @@
 # Makefile for Educational OS
 
-C_SOURCES = $(wildcard kernel/*.c drivers/*.c memory/*.c process/*.c filesystem/*.c shell/*.c)
+C_SOURCES = $(wildcard kernel/*.c drivers/*.c memory/*.c process/*.c shell/*.c)
 HEADERS = $(wildcard include/*.h)
 # Nice syntax for file extension replacement
 OBJ = ${C_SOURCES:.c=.o}
@@ -46,5 +46,5 @@ kernel.bin: boot/kernel_entry.o kernel/interrupt.o ${OBJ} | linker.ld
 # Clean up
 clean:
 	rm -f *.bin *.o os-image
-	rm -f kernel/*.o boot/*.bin drivers/*.o boot/*.o memory/*.o process/*.o filesystem/*.o shell/*.o
+	rm -f kernel/*.o boot/*.bin drivers/*.o boot/*.o memory/*.o process/*.o shell/*.o
 

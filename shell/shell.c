@@ -317,6 +317,8 @@ static void init_fs() {
 
 // Print customized prompt with current working directory (CWD)
 static void print_prompt() {
+    // Safety: ensure cwd is never printed as empty
+    if (cwd[0] == '\0') { cwd[0] = '/'; cwd[1] = '\0'; }
     kprint_color("\nneo@hamro_os", 0x0A); // Light Green
     kprint_color(":", 0x0F);            // White
     kprint_color(cwd, 0x0B);            // Light Cyan CWD
@@ -743,6 +745,7 @@ static void execute_command(char *input) {
         kprint_color("Available commands:\n", 0x0E);
         kprint_color("  help              ", 0x0B); kprint("- Display this help menu\n");
         kprint_color("  clear             ", 0x0B); kprint("- Clear screen terminal\n");
+        kprint_color("  scroll            ", 0x0B); kprint("- Test scroll functionality\n");
         kprint_color("  uptime            ", 0x0B); kprint("- Display uptime ticks\n");
         kprint_color("  sleep             ", 0x0B); kprint("- Sleep for 2 seconds\n");
         kprint_color("  meminfo           ", 0x0B); kprint("- Show RAM memory manager stats\n");
@@ -765,6 +768,14 @@ static void execute_command(char *input) {
         kprint_color("  calc <expr>      ", 0x0B); kprint("- Math: calc 3+5*2  or  calc (10-3)*4\n");
     } else if (strcmp(cmd, "clear") == 0) {
         clear_screen();
+    } else if (strcmp(cmd, "scroll") == 0) {
+        for(int i=0; i<30; i++) {
+            kprint("Scrolling... line ");
+            char num_buf[16];
+            int_to_ascii(i+1, num_buf);
+            kprint(num_buf);
+            kprint("\n");
+        }
     } else if (strcmp(cmd, "uptime") == 0) {
         u32 ticks = get_ticks();
         u32 secs = ticks / 100;
@@ -938,6 +949,8 @@ static void execute_command(char *input) {
         } else {
             to_absolute_path(arg, target);
         }
+        // Defensive: empty target defaults to root
+        if (strlen(target) == 0) { target[0] = '/'; target[1] = '\0'; }
         
         int exists_dir = 0;
         if (strcmp(target, "/") == 0) {
@@ -1015,6 +1028,8 @@ static void execute_command(char *input) {
             
             if (is_dir) {
                 strcpy(cwd, target);
+                // Safety: ensure cwd is never empty after cd
+                if (cwd[0] == '\0') { cwd[0] = '/'; cwd[1] = '\0'; }
             } else {
                 kprint_color("cd: directory not found: '", 0x0C);
                 kprint_color(target, 0x0C);

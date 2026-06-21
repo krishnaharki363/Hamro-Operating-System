@@ -110,7 +110,7 @@ void isr_install() {
     set_idt(); // Load IDTR
 }
 
-void isr_handler(registers_t *r) {
+u32 isr_handler(registers_t *r) {
     kprint("Received Exception: ");
     if (r->int_no < 32) {
         kprint(exception_messages[r->int_no]);
@@ -119,13 +119,14 @@ void isr_handler(registers_t *r) {
     }
     kprint("\nSystem Halted!\n");
     __asm__ __volatile__("cli; hlt");
+    return (u32)r;
 }
 
 void register_interrupt_handler(u8 n, isr_t handler) {
     interrupt_handlers[n] = handler;
 }
 
-void irq_handler(registers_t *r) {
+u32 irq_handler(registers_t *r) {
     // Send End of Interrupt (EOI) to PICs
     if (r->int_no >= 40) {
         port_byte_out(0xA0, 0x20); // Slave
@@ -135,6 +136,7 @@ void irq_handler(registers_t *r) {
     // If we have a registered handler, run it
     if (interrupt_handlers[r->int_no] != 0) {
         isr_t handler = interrupt_handlers[r->int_no];
-        handler(r);
+        return handler(r);
     }
+    return (u32)r;
 }

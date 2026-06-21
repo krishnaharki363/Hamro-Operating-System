@@ -68,7 +68,8 @@ isr_common_stub:
     
     push esp                 ; Push registers_t* parameter onto stack
     call isr_handler         ; Call C function
-    add esp, 4               ; Clean up parameter from stack
+    mov esp, eax             ; Switch to new stack!
+                             ; (No need to clean up parameter, eax points to registers_t)
 
     pop eax                  ; Restore original data segment descriptor
     mov ds, ax
@@ -92,7 +93,8 @@ irq_common_stub:
     
     push esp                 ; Push registers_t* parameter onto stack
     call irq_handler         ; Call C function
-    add esp, 4               ; Clean up parameter from stack
+    mov esp, eax             ; Switch to new stack!
+                             ; (No need to clean up parameter, eax points to registers_t)
 
     pop eax                  ; Restore original data segment descriptor
     mov ds, ax

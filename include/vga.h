@@ -40,4 +40,15 @@ void kprint_color(char *message, char attr);
 void kprint_at_color(char *message, int col, int row, char attr);
 void clear_screen();
 
+char get_char_at(int col, int row);
+char get_color_at(int col, int row);
+void print_char_at_color(char c, int col, int row, char attr);
+
+int get_cursor_offset();
+void set_cursor_offset(int offset);
+
+void vga_scroll_up();
+void vga_scroll_down();
+void vga_poke(char c, char attr, int col, int row);
+
 #endif

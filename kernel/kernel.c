@@ -4,6 +4,32 @@
 #include "../include/keyboard.h"
 #include "../include/mem.h"
 #include "../include/shell.h"
+#include "../include/process.h"
+#include "../include/mouse.h"
+
+void task1() {
+    while(1) {
+        // Blink "T1" in red at top-right (row 0, cols 76-77)
+        vga_poke('T', 0x0C, 76, 0);
+        vga_poke('1', 0x0C, 77, 0);
+        process_sleep(50);
+        vga_poke(' ', 0x0C, 76, 0);
+        vga_poke(' ', 0x0C, 77, 0);
+        process_sleep(50);
+    }
+}
+
+void task2() {
+    while(1) {
+        // Blink "T2" in blue at top-right (row 0, cols 78-79)
+        vga_poke('T', 0x09, 78, 0);
+        vga_poke('2', 0x09, 79, 0);
+        process_sleep(75);
+        vga_poke(' ', 0x09, 78, 0);
+        vga_poke(' ', 0x09, 79, 0);
+        process_sleep(75);
+    }
+}
 
 void kernel_main() {
     clear_screen();
@@ -41,14 +67,28 @@ void kernel_main() {
     init_keyboard();
     kprint_color("[OK]\n", 0x0A);
     
-    // 5. Enable hardware interrupts
+    // 5. Initialize Mouse Driver
+    kprint_color("-> Mouse Driver... ", 0x0F);
+    init_mouse();
+    kprint_color("[OK]\n", 0x0A);
+    
+    // 6. Initialize Process Scheduler
+    kprint_color("-> Process Scheduler... ", 0x0F);
+    init_scheduler();
+    kprint_color("[OK]\n", 0x0A);
+
+    // 7. Enable hardware interrupts
     kprint_color("Enabling Interrupts... ", 0x0F);
     __asm__ __volatile__("sti");
     kprint_color("[OK]\n", 0x0A);
     
+    // Create test threads
+    create_process(task1);
+    create_process(task2);
+    
     kprint_color("\nSystem ready. Launching interactive shell...\n", 0x0B); // Light Cyan
     
-    // 6. Transfer control to the interactive shell
+    // 8. Transfer control to the interactive shell
     run_shell();
 }
 

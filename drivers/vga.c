@@ -2,6 +2,13 @@
 #include "ports.h"
 
 // Private function declarations
+#define SCROLL_HISTORY_LINES 256
+static char scroll_history[SCROLL_HISTORY_LINES][MAX_COLS * 2];
+static char shadow_buffer[MAX_ROWS][MAX_COLS * 2];
+static int history_count = 0;
+static int scroll_offset = 0;
+
+void vga_redraw_screen();
 int get_cursor_offset();
 void set_cursor_offset(int offset);
 int print_char(char c, int col, int row, char attr);
@@ -41,13 +48,15 @@ void kprint(char *message) {
 }
 
 void clear_screen() {
-    int screen_size = MAX_COLS * MAX_ROWS;
-    char *screen = (char*) VIDEO_ADDRESS;
-
-    for (int i = 0; i < screen_size; i++) {
-        screen[i*2] = ' ';
-        screen[i*2+1] = DEFAULT_COLOR;
+    for (int i = 0; i < MAX_ROWS; i++) {
+        for (int j = 0; j < MAX_COLS; j++) {
+            shadow_buffer[i][j*2] = ' ';
+            shadow_buffer[i][j*2+1] = DEFAULT_COLOR;
+        }
     }
+    
+    scroll_offset = 0;
+    vga_redraw_screen();
     set_cursor_offset(get_offset(0, 0));
 }
 
@@ -72,34 +81,60 @@ int print_char(char c, int col, int row, char attr) {
     } else if (c == '\b') {
         if (offset > 0) {
             offset -= 2;
-            vidmem[offset] = ' ';
-            vidmem[offset+1] = attr;
+            int r = get_offset_row(offset);
+            int c_idx = get_offset_col(offset);
+            shadow_buffer[r][c_idx*2] = ' ';
+            shadow_buffer[r][c_idx*2+1] = attr;
         }
     } else {
-        vidmem[offset] = c;
-        vidmem[offset+1] = attr;
+        int r = get_offset_row(offset);
+        int c_idx = get_offset_col(offset);
+        if (r < MAX_ROWS && c_idx < MAX_COLS) {
+            shadow_buffer[r][c_idx*2] = c;
+            shadow_buffer[r][c_idx*2+1] = attr;
+        }
         offset += 2;
     }
 
     // Scroll if needed (simple scrolling)
     if (offset >= MAX_ROWS * MAX_COLS * 2) {
+        // Save the top row to history
+        for (int j = 0; j < MAX_COLS * 2; j++) {
+            scroll_history[history_count % SCROLL_HISTORY_LINES][j] = shadow_buffer[0][j];
+        }
+        history_count++;
+        
         for (int i = 1; i < MAX_ROWS; i++) {
             // copy row i to row i-1
             for (int j = 0; j < MAX_COLS * 2; j++) {
-                vidmem[get_offset(0, i-1) + j] = vidmem[get_offset(0, i) + j];
+                shadow_buffer[i-1][j] = shadow_buffer[i][j];
             }
         }
         // blank last line
-        char *last_line = (char*) (get_offset(0, MAX_ROWS-1) + VIDEO_ADDRESS);
-        for (int i = 0; i < MAX_COLS; i++) {
-            last_line[i*2] = ' ';
-            last_line[i*2+1] = DEFAULT_COLOR;
+        for (int j = 0; j < MAX_COLS; j++) {
+            shadow_buffer[MAX_ROWS-1][j*2] = ' ';
+            shadow_buffer[MAX_ROWS-1][j*2+1] = DEFAULT_COLOR;
         }
 
         offset -= 2 * MAX_COLS;
+        // If we are actively looking at history, maybe we shouldn't shift their view immediately, 
+        // but for simplicity we will just let it track.
     }
 
     set_cursor_offset(offset);
+
+    /* Fast path: if not scrolled, write the shadow_buffer directly to vidmem
+     * one cell at a time instead of redrawing all 25 rows. */
+    if (scroll_offset == 0) {
+        char *vidmem2 = (char*) VIDEO_ADDRESS;
+        for (int i = 0; i < MAX_ROWS; i++) {
+            for (int j = 0; j < MAX_COLS * 2; j++) {
+                vidmem2[i * MAX_COLS * 2 + j] = shadow_buffer[i][j];
+            }
+        }
+    } else {
+        vga_redraw_screen();
+    }
     return offset;
 }
 
@@ -126,3 +161,71 @@ void set_cursor_offset(int offset) {
 int get_offset(int col, int row) { return 2 * (row * MAX_COLS + col); }
 int get_offset_row(int offset) { return offset / (2 * MAX_COLS); }
 int get_offset_col(int offset) { return (offset - (get_offset_row(offset)*2*MAX_COLS))/2; }
+
+char get_char_at(int col, int row) {
+    if (col >= MAX_COLS || row >= MAX_ROWS) return ' ';
+    unsigned char *vidmem = (unsigned char*) VIDEO_ADDRESS;
+    return vidmem[get_offset(col, row)];
+}
+
+char get_color_at(int col, int row) {
+    if (col >= MAX_COLS || row >= MAX_ROWS) return DEFAULT_COLOR;
+    unsigned char *vidmem = (unsigned char*) VIDEO_ADDRESS;
+    return vidmem[get_offset(col, row) + 1];
+}
+
+void print_char_at_color(char c, int col, int row, char attr) {
+    print_char(c, col, row, attr);
+}
+
+void vga_redraw_screen() {
+    char *vidmem = (char*) VIDEO_ADDRESS;
+    for (int i = 0; i < MAX_ROWS; i++) {
+        int history_idx = history_count - scroll_offset + i;
+        if (history_idx < 0) {
+            // Not enough history, draw blanks
+            for (int j = 0; j < MAX_COLS; j++) {
+                vidmem[(i * MAX_COLS + j) * 2] = ' ';
+                vidmem[(i * MAX_COLS + j) * 2 + 1] = DEFAULT_COLOR;
+            }
+        } else if (history_idx < history_count) {
+            // Draw from history
+            for (int j = 0; j < MAX_COLS * 2; j++) {
+                vidmem[i * MAX_COLS * 2 + j] = scroll_history[history_idx % SCROLL_HISTORY_LINES][j];
+            }
+        } else {
+            // Draw from shadow buffer
+            int shadow_i = history_idx - history_count;
+            for (int j = 0; j < MAX_COLS * 2; j++) {
+                vidmem[i * MAX_COLS * 2 + j] = shadow_buffer[shadow_i][j];
+            }
+        }
+    }
+}
+
+void vga_scroll_up() {
+    if (scroll_offset < SCROLL_HISTORY_LINES && scroll_offset < history_count) {
+        scroll_offset++;
+        vga_redraw_screen();
+    }
+}
+
+void vga_scroll_down() {
+    if (scroll_offset > 0) {
+        scroll_offset--;
+        vga_redraw_screen();
+    }
+}
+
+char* get_shadow_buffer() {
+    return (char*)shadow_buffer;
+}
+
+/* Write a character directly to the shadow buffer at (col, row) and redraw.
+ * Does NOT move the hardware cursor, so it is safe for background tasks. */
+void vga_poke(char c, char attr, int col, int row) {
+    if (col < 0 || col >= MAX_COLS || row < 0 || row >= MAX_ROWS) return;
+    shadow_buffer[row][col * 2]     = c;
+    shadow_buffer[row][col * 2 + 1] = attr;
+    vga_redraw_screen();
+}
