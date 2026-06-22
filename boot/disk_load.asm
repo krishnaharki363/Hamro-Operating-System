@@ -90,6 +90,20 @@ load_kernel:
     mov al, '5'
     int 0x10
 
+    ; ---- Read 6: 18 sectors (starts at 0x10E00) ----
+    mov ax, 0x10E0
+    mov es, ax
+    mov ah, 0x02
+    mov al, 18
+    mov ch, 2    ; Cylinder 2
+    mov dh, 0    ; Head 0
+    mov cl, 1    ; sector 1
+    int 0x13
+    jc disk_error
+    mov ah, 0x0e
+    mov al, '6'
+    int 0x10
+
     ; Restore ES=0 for the rest of the bootloader
     mov ax, 0
     mov es, ax
